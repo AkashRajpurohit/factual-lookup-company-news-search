@@ -6,9 +6,14 @@ Harness, vendor runners, and judges for the
 Published by **[OpenBenchmarks Labs](https://openbenchmarks.com)**.
 
 This repo is **open code only**. It does not include run dumps, raw vendor
-HTTP, or leaderboard snapshots. The public 100-question set (question +
-ground truth answer) is on Hugging Face:
+HTTP, or leaderboard snapshots.
+
+**Datasets.** The live board is scored on a locked **300-question** private
+set. A **100-question** public set (question + ground truth; source URLs
+omitted) is on Hugging Face as
 [`openbenchmarks/OB-News-Websearch`](https://huggingface.co/datasets/openbenchmarks/OB-News-Websearch).
+Use the public rows to inspect the format and run this harness; scores on
+those rows are not comparable to the board.
 
 Live board: https://openbenchmarks.com/company-news · hub: https://openbenchmarks.com/web-search
 
@@ -54,6 +59,10 @@ These are the general web-search arms on the live factual-lookup board:
 
 `--backend` / `--endpoints` default to this list. TinyFish Search is free
 with a 30 req/min cap.
+
+The live page also bands dedicated news indexes (Seltz news, Autobound,
+PredictLeads, Datahyena) on the same 300 questions. Those adapters are not
+in this runner; this repo covers the web-search band only.
 
 ## Run
 
