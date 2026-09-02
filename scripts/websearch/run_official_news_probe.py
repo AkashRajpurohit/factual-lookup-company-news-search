@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Official atomic company-news run on the locked 132-item set.
+"""Official atomic company-news run.
 
-Fresh vendor calls only. Does not reuse dataset-building smokes.
-Stores raw request/response + latency for every endpoint call.
+Fresh vendor calls only. One natural-language query, one request, max 10
+results. Endpoints match the public /web-search factual-lookup board.
 
   PYTHONPATH=scripts .venv/bin/python -u scripts/websearch/run_official_news_probe.py
   PYTHONPATH=scripts .venv/bin/python -u scripts/websearch/run_official_news_probe.py --resume DIR
@@ -29,12 +29,6 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from _shared import load_environment  # noqa: E402
-from websearch.predictleads_news import (  # noqa: E402
-    expand_categories,
-    fetch_category_events,
-    pick_categories,
-    recipe_categories,
-)
 from websearch.run_atomic_news_probe import (  # noqa: E402
     MAX_RESULTS,
     _dedupe,
@@ -51,23 +45,24 @@ SAMPLES = ROOT / "data" / "company-news" / "samples.json"
 OUT_ROOT = ROOT / "data" / "company-news" / "official-runs"
 DEFAULT_MODEL = "gpt-5.6-terra"
 
-# List prices as of 2026-08-16. Seltz and Brave Search are $5 / 1,000 requests.
-# Tavily PAYG is $0.008/credit; ultra-fast is 1 credit, advanced is 2.
-# RapidAPI google-search74 Pro overage is $0.003/request.
+# List prices as of 2026-09-01. Brave Search and Brave LLM Context are
+# $5 / 1,000 requests. Tavily ultra-fast is 1 credit at $0.008 PAYG.
+# RapidAPI google-search74 Pro overage is $0.003/request. TinyFish Search
+# is free with a 30 req/min cap.
 UNIT_COST_USD = {
     "parallel_turbo": 0.001,
     "parallel_fast": 0.001,
     "parallel_basic": 0.005,
-    "parallel_advanced": 0.005,
     "exa_instant": 0.007,
-    "exa_deep": 0.012,
-    "firecrawl": 0.005,
-    "predictleads": 0.04,
-    "seltz_news": 0.005,
-    "seltz_companies": 0.005,
+    "exa_fast": 0.007,
     "brave": 0.005,
+    "brave_llm": 0.005,
+    "you": 0.005,
+    "you_highlights": 0.005,
+    "perplexity_low": 0.005,
+    "tinyfish": 0.0,
+    "firecrawl": 0.005,
     "tavily_ultrafast": 0.008,
-    "tavily_advanced": 0.016,
     "serp": 0.003,
     "linkup_fast": 0.005,
     "linkup_standard": 0.005,
@@ -76,58 +71,60 @@ UNIT_COST_USD = {
 }
 
 ENDPOINTS = (
-    "exa_instant",
-    "exa_deep",
-    "parallel_turbo",
+    "tinyfish",
     "parallel_fast",
-    "parallel_basic",
-    "parallel_advanced",
-    "firecrawl",
-    "predictleads",
-    "seltz_news",
-    "brave",
-    "tavily_advanced",
+    "parallel_turbo",
     "serp",
+    "perplexity_low",
     "linkup_fast",
+    "firecrawl",
+    "brave_llm",
+    "you",
+    "parallel_basic",
+    "brave",
     "linkup_standard",
+    "you_highlights",
+    "exa_fast",
+    "exa_instant",
+    "tavily_ultrafast",
 )
 
 ENDPOINT_MAP = {
-    "parallel_turbo": "POST https://api.parallel.ai/v1/search mode=turbo",
+    "tinyfish": "GET https://api.search.tinyfish.ai",
     "parallel_fast": "POST https://api.parallel.ai/v1/search mode=fast",
-    "parallel_basic": "POST https://api.parallel.ai/v1/search mode=basic",
-    "parallel_advanced": "POST https://api.parallel.ai/v1/search mode=advanced",
-    "exa_instant": "POST https://api.exa.ai/search type=instant",
-    "exa_deep": "POST https://api.exa.ai/search type=deep",
-    "firecrawl": "POST https://api.firecrawl.dev/v2/search",
-    "predictleads": "GET https://predictleads.com/api/v3/companies/{domain}/news_events categories[]",
-    "seltz_news": "POST https://api.seltz.ai/v1/search scope=news max_results=10",
-    "seltz_companies": "POST https://api.seltz.ai/v1/search scope=companies max_results=10",
-    "brave": "GET https://api.search.brave.com/res/v1/web/search count=10 result_filter=web",
-    "tavily_ultrafast": "POST https://api.tavily.com/search search_depth=ultra-fast max_results=10",
-    "tavily_advanced": "POST https://api.tavily.com/search search_depth=advanced max_results=10",
+    "parallel_turbo": "POST https://api.parallel.ai/v1/search mode=turbo",
     "serp": "GET https://google-search74.p.rapidapi.com/ query limit=10",
+    "perplexity_low": "POST https://api.perplexity.ai/search search_context_size=low",
     "linkup_fast": "POST https://api.linkup.so/v1/search depth=fast outputType=searchResults maxResults=10",
+    "firecrawl": "POST https://api.firecrawl.dev/v2/search",
+    "brave_llm": "POST https://api.search.brave.com/res/v1/llm/context",
+    "you": "POST https://ydc-index.io/v1/search",
+    "parallel_basic": "POST https://api.parallel.ai/v1/search mode=basic",
+    "brave": "GET https://api.search.brave.com/res/v1/web/search count=10 result_filter=web",
     "linkup_standard": "POST https://api.linkup.so/v1/search depth=standard outputType=searchResults maxResults=10",
+    "you_highlights": "POST https://ydc-index.io/v1/search extraction_mode=highlights",
+    "exa_fast": "POST https://api.exa.ai/search type=fast",
+    "exa_instant": "POST https://api.exa.ai/search type=instant",
+    "tavily_ultrafast": "POST https://api.tavily.com/search search_depth=ultra-fast max_results=10",
 }
 
 ENDPOINT_ENV = {
-    "parallel_turbo": ("PARALLEL_API_KEY",),
+    "tinyfish": ("TINYFISH_API_KEY",),
     "parallel_fast": ("PARALLEL_API_KEY",),
-    "parallel_basic": ("PARALLEL_API_KEY",),
-    "parallel_advanced": ("PARALLEL_API_KEY",),
-    "exa_instant": ("EXA_API_KEY",),
-    "exa_deep": ("EXA_API_KEY",),
-    "firecrawl": ("FIRECRAWL_API_KEY",),
-    "predictleads": ("PREDICT_LEADS_API_KEY", "PREDICT_LEADS_API_TOKEN"),
-    "seltz_news": ("SELTZ_API_KEY",),
-    "seltz_companies": ("SELTZ_API_KEY",),
-    "brave": ("BRAVE_SEARCH_API_KEY",),
-    "tavily_ultrafast": ("TAVILY_API_KEY",),
-    "tavily_advanced": ("TAVILY_API_KEY",),
+    "parallel_turbo": ("PARALLEL_API_KEY",),
     "serp": ("RAPIDAPI_KEY",),
+    "perplexity_low": ("PERPLEXITY_API_KEY",),
     "linkup_fast": ("LINKUP_API_KEY",),
+    "firecrawl": ("FIRECRAWL_API_KEY",),
+    "brave_llm": ("BRAVE_SEARCH_API_KEY",),
+    "you": ("YDC_API_KEY",),
+    "parallel_basic": ("PARALLEL_API_KEY",),
+    "brave": ("BRAVE_SEARCH_API_KEY",),
     "linkup_standard": ("LINKUP_API_KEY",),
+    "you_highlights": ("YDC_API_KEY",),
+    "exa_fast": ("EXA_API_KEY",),
+    "exa_instant": ("EXA_API_KEY",),
+    "tavily_ultrafast": ("TAVILY_API_KEY",),
 }
 
 
@@ -310,37 +307,96 @@ def _parse_linkup(payload: Any) -> list[dict[str, Any]]:
     return _dedupe(hits)
 
 
-def _parse_seltz(payload: Any) -> list[dict[str, Any]]:
+def _first_env(*names: str) -> str:
+    for name in names:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _parse_brave_llm(payload: Any) -> list[dict[str, Any]]:
+    grounding = payload.get("grounding") if isinstance(payload, dict) else None
+    rows = grounding.get("generic") if isinstance(grounding, dict) else None
+    if not isinstance(rows, list):
+        rows = []
     hits = []
-    for item in (payload or {}).get("documents") or []:
+    for item in rows:
         if not isinstance(item, dict) or not item.get("url"):
             continue
-        hits.append(_hit(item["url"], item.get("title"), item.get("content") or item.get("snippet")))
+        chunks = item.get("snippets") or []
+        if isinstance(chunks, list):
+            snippet = "\n".join(str(part) for part in chunks if part)
+        else:
+            snippet = str(chunks)
+        hits.append(_hit(item["url"], item.get("title"), snippet))
     return _dedupe(hits)
 
 
-def _parse_predictleads(payload: Any) -> list[dict[str, Any]]:
-    included: dict[tuple[str, str], dict[str, Any]] = {}
-    for inc in (payload or {}).get("included") or []:
-        if isinstance(inc, dict) and inc.get("id"):
-            included[(inc.get("type") or "", inc["id"])] = inc.get("attributes") or {}
+def _you_hit_text(item: dict[str, Any]) -> str:
+    contents = item.get("contents") if isinstance(item.get("contents"), dict) else {}
+    highlights = (contents or {}).get("highlights")
+    if not isinstance(highlights, list):
+        highlights = item.get("highlights")
+    parts: list[str] = []
+    if isinstance(highlights, list):
+        for part in highlights:
+            if isinstance(part, str) and part.strip():
+                parts.append(part.strip())
+            elif isinstance(part, dict):
+                text = part.get("text") or part.get("snippet") or part.get("content") or ""
+                if str(text).strip():
+                    parts.append(str(text).strip())
+    if parts:
+        return "\n".join(parts)
+    chunks = item.get("snippets") or []
+    if isinstance(chunks, list) and chunks:
+        return "\n".join(str(part) for part in chunks if part)
+    return str(item.get("description") or item.get("snippet") or "")
+
+
+def _parse_you(payload: Any) -> list[dict[str, Any]]:
+    data = payload.get("results") if isinstance(payload, dict) else payload
+    rows: list[Any] = []
+    if isinstance(data, dict):
+        rows.extend(data.get("web") or [])
+        rows.extend(data.get("news") or [])
+    elif isinstance(data, list):
+        rows = data
     hits = []
-    for ev in (payload or {}).get("data") or []:
-        attrs = ev.get("attributes") or {}
-        rel = ((ev.get("relationships") or {}).get("most_relevant_source") or {}).get("data") or {}
-        art = included.get(("news_article", rel.get("id") or ""), {})
-        url = art.get("url")
-        if not url:
+    for item in rows:
+        if not isinstance(item, dict) or not item.get("url"):
             continue
-        snippet = attrs.get("article_sentence") or attrs.get("summary") or art.get("body")
-        hits.append(_hit(url, art.get("title") or attrs.get("summary"), snippet))
+        hits.append(_hit(item["url"], item.get("title"), _you_hit_text(item)))
+    return _dedupe(hits)
+
+
+def _parse_tinyfish(payload: Any) -> list[dict[str, Any]]:
+    rows = (payload or {}).get("results") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        rows = []
+    hits = []
+    for item in rows:
+        if not isinstance(item, dict) or not item.get("url"):
+            continue
+        hits.append(_hit(item["url"], item.get("title"), item.get("snippet") or item.get("description")))
+    return _dedupe(hits)
+
+
+def _parse_perplexity(payload: Any) -> list[dict[str, Any]]:
+    hits = []
+    for item in (payload or {}).get("results") or []:
+        if not isinstance(item, dict) or not item.get("url"):
+            continue
+        hits.append(_hit(item["url"], item.get("title"), item.get("snippet") or item.get("content")))
     return _dedupe(hits)
 
 
 def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    del case
     if name.startswith("parallel_"):
         mode = name.removeprefix("parallel_")
-        if mode not in {"turbo", "fast", "basic", "advanced"}:
+        if mode not in {"turbo", "fast", "basic"}:
             raise KeyError(name)
         raw = _http(
             method="POST",
@@ -353,19 +409,21 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
                 "advanced_settings": {"max_results": MAX_RESULTS},
             },
             params=None,
-            timeout=90 if mode == "advanced" else 60,
+            timeout=90 if mode == "basic" else 60,
         )
         hits = _parse_parallel(raw.get("response")) if raw["ok"] else []
         return hits, raw
     if name.startswith("exa_"):
-        exa_type = "instant" if name.endswith("instant") else "deep"
+        exa_type = name.removeprefix("exa_")
+        if exa_type not in {"instant", "fast"}:
+            raise KeyError(name)
         raw = _http(
             method="POST",
             url="https://api.exa.ai/search",
             headers={"x-api-key": os.environ["EXA_API_KEY"], "Content-Type": "application/json"},
             body={"query": question, "type": exa_type, "numResults": MAX_RESULTS, "contents": {"highlights": True}},
             params=None,
-            timeout=120 if exa_type == "deep" else 45,
+            timeout=45,
         )
         hits = _parse_exa(raw.get("response")) if raw["ok"] else []
         return hits, raw
@@ -380,49 +438,7 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
         )
         hits = _parse_firecrawl(raw.get("response")) if raw["ok"] else []
         return hits, raw
-    if name == "predictleads":
-        domain = case.get("company_domain") or (case.get("gold") or {}).get("domain")
-        recipe = case.get("recipe") or case.get("pattern")
-        if not domain:
-            raw = {
-                "method": "GET",
-                "url": "",
-                "request": {"headers": {}, "body": None, "params": None},
-                "ok": False,
-                "error": "PredictLeads needs company_domain",
-                "status_code": None,
-                "response": None,
-                "attempts": [],
-                "latency_ms": 0,
-                "started_at": _now(),
-                "ended_at": _now(),
-            }
-            return [], raw
-        categories = expand_categories(recipe_categories(recipe), recipe)
-        try:
-            picked, _, _ = pick_categories(_openai(), "gpt-4.1-mini", question, recipe)
-            if picked:
-                categories = picked
-        except Exception:  # noqa: BLE001
-            pass
-        hits, raw = fetch_category_events(domain, categories)
-        return hits, raw
-    if name.startswith("seltz_"):
-        scope = "news" if name.endswith("news") else "companies"
-        raw = _http(
-            method="POST",
-            url="https://api.seltz.ai/v1/search",
-            headers={"x-api-key": os.environ["SELTZ_API_KEY"], "Content-Type": "application/json"},
-            body={"query": question, "max_results": MAX_RESULTS, "scope": scope},
-            params=None,
-            timeout=45,
-        )
-        hits = _parse_seltz(raw.get("response")) if raw["ok"] else []
-        return hits, raw
     if name == "brave":
-        # Same contract as the others: one NL query, one request, max 10 web
-        # results. Web Search (not LLM Context / Answers / News). No freshness
-        # window, goggles, pagination, extra_snippets, or rich callback.
         raw = _http(
             method="GET",
             url="https://api.search.brave.com/res/v1/web/search",
@@ -440,18 +456,75 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
         )
         hits = _parse_brave(raw.get("response")) if raw["ok"] else []
         return hits, raw
-    if name.startswith("tavily_"):
-        # Same contract: one NL query, one request, max 10 results. Search only
-        # (not Extract / Research / include_answer / include_raw_content).
-        # No topic=news, time_range, or auto_parameters.
-        depth = "ultra-fast" if name.endswith("ultrafast") else "advanced"
-        body: dict[str, Any] = {
-            "query": question,
-            "search_depth": depth,
-            "max_results": MAX_RESULTS,
-        }
-        if depth == "advanced":
-            body["chunks_per_source"] = 3
+    if name == "brave_llm":
+        raw = _http(
+            method="POST",
+            url="https://api.search.brave.com/res/v1/llm/context",
+            headers={
+                "X-Subscription-Token": os.environ["BRAVE_SEARCH_API_KEY"],
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            body={
+                "q": question,
+                "count": MAX_RESULTS,
+                "maximum_number_of_urls": MAX_RESULTS,
+                "maximum_number_of_tokens": min(8192, max(2048, MAX_RESULTS * 1024)),
+                "enable_local": False,
+            },
+            params=None,
+            timeout=30,
+        )
+        hits = _parse_brave_llm(raw.get("response")) if raw["ok"] else []
+        return hits, raw
+    if name in {"you", "you_highlights"}:
+        you_key = _first_env("YDC_API_KEY", "YOU_API_KEY", "YOU_KEY")
+        body: dict[str, Any] = {"query": question, "count": MAX_RESULTS}
+        if name == "you_highlights":
+            body["extraction"] = {"extraction_mode": "highlights"}
+        raw = _http(
+            method="POST",
+            url="https://ydc-index.io/v1/search",
+            headers={"X-API-Key": you_key, "Content-Type": "application/json"},
+            body=body,
+            params=None,
+            timeout=45 if name == "you_highlights" else 30,
+        )
+        hits = _parse_you(raw.get("response")) if raw["ok"] else []
+        return hits, raw
+    if name == "perplexity_low":
+        raw = _http(
+            method="POST",
+            url="https://api.perplexity.ai/search",
+            headers={
+                "Authorization": f"Bearer {_first_env('PERPLEXITY_API_KEY', 'PERPLEXITY_API')}",
+                "Content-Type": "application/json",
+            },
+            body={
+                "query": question,
+                "max_results": MAX_RESULTS,
+                "search_context_size": "low",
+            },
+            params=None,
+            timeout=45,
+        )
+        hits = _parse_perplexity(raw.get("response")) if raw["ok"] else []
+        return hits, raw
+    if name == "tinyfish":
+        raw = _http(
+            method="GET",
+            url="https://api.search.tinyfish.ai",
+            headers={
+                "X-API-Key": _first_env("TINYFISH_API_KEY", "TINYFISH_KEY"),
+                "Accept": "application/json",
+            },
+            body=None,
+            params={"query": question},
+            timeout=30,
+        )
+        hits = _parse_tinyfish(raw.get("response")) if raw["ok"] else []
+        return hits, raw
+    if name == "tavily_ultrafast":
         raw = _http(
             method="POST",
             url="https://api.tavily.com/search",
@@ -459,16 +532,17 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
                 "Authorization": f"Bearer {os.environ['TAVILY_API_KEY']}",
                 "Content-Type": "application/json",
             },
-            body=body,
+            body={
+                "query": question,
+                "search_depth": "ultra-fast",
+                "max_results": MAX_RESULTS,
+            },
             params=None,
-            timeout=90 if depth == "advanced" else 45,
+            timeout=45,
         )
         hits = _parse_tavily(raw.get("response")) if raw["ok"] else []
         return hits, raw
     if name == "serp":
-        # Same RapidAPI Google Search host as self-serve-backend llm/serp_search.py.
-        # One NL query, one GET, max 10 organic results. No related_keywords,
-        # no page scrape, no BrightData.
         raw = _http(
             method="GET",
             url="https://google-search74.p.rapidapi.com/",
@@ -483,10 +557,9 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
         hits = _parse_serp(raw.get("response")) if raw["ok"] else []
         return hits, raw
     if name.startswith("linkup_"):
-        # Same contract: one NL query, one request, max 10 sources.
-        # searchResults only — no sourcedAnswer / structured / deep.
-        # fast is index-only; standard is Linkup's single-iteration agent mode.
         depth = "fast" if name.endswith("fast") else "standard"
+        if name not in {"linkup_fast", "linkup_standard"}:
+            raise KeyError(name)
         raw = _http(
             method="POST",
             url="https://api.linkup.so/v1/search",
@@ -662,6 +735,26 @@ def _required_env(endpoints: list[str]) -> list[str]:
     return sorted(set(keys))
 
 
+def _missing_env(endpoints: list[str]) -> list[str]:
+    missing: list[str] = []
+    for key in _required_env(endpoints):
+        if key == "YDC_API_KEY":
+            if not _first_env("YDC_API_KEY", "YOU_API_KEY", "YOU_KEY"):
+                missing.append("YDC_API_KEY")
+            continue
+        if key == "PERPLEXITY_API_KEY":
+            if not _first_env("PERPLEXITY_API_KEY", "PERPLEXITY_API"):
+                missing.append("PERPLEXITY_API_KEY")
+            continue
+        if key == "TINYFISH_API_KEY":
+            if not _first_env("TINYFISH_API_KEY", "TINYFISH_KEY"):
+                missing.append("TINYFISH_API_KEY")
+            continue
+        if not os.environ.get(key):
+            missing.append(key)
+    return missing
+
+
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     vendors = [n for n in ENDPOINTS if any(n in (r.get("gold_scores") or {}) for r in rows)]
     by_recipe: dict[str, list[dict[str, Any]]] = {}
@@ -742,7 +835,7 @@ def main() -> None:
 
     load_environment()
     endpoints = _parse_endpoints(args.endpoints)
-    missing = [k for k in _required_env(endpoints) if not os.environ.get(k)]
+    missing = _missing_env(endpoints)
     if missing:
         raise SystemExit(f"missing env: {missing}")
 

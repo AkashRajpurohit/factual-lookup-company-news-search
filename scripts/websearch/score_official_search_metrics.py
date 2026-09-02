@@ -19,20 +19,22 @@ RUN = ROOT / "data" / "company-news" / "official-runs" / "20260816T020806Z"
 SAMPLES = ROOT / "data" / "company-news" / "samples.json"
 KS = (1, 5, 10)
 ENDPOINTS = (
-    "exa_instant",
-    "exa_deep",
-    "parallel_turbo",
+    "tinyfish",
     "parallel_fast",
-    "parallel_basic",
-    "parallel_advanced",
-    "firecrawl",
-    "predictleads",
-    "seltz_news",
-    "brave",
-    "tavily_advanced",
+    "parallel_turbo",
     "serp",
+    "perplexity_low",
     "linkup_fast",
+    "firecrawl",
+    "brave_llm",
+    "you",
+    "parallel_basic",
+    "brave",
     "linkup_standard",
+    "you_highlights",
+    "exa_fast",
+    "exa_instant",
+    "tavily_ultrafast",
 )
 
 

@@ -2,8 +2,7 @@
 """Single-query atomic company-news probe.
 
 One natural-language query, one API request, max 10 results, no rewrite,
-no page fetch. Vendors: Exa, Parallel (turbo), Firecrawl, PredictLeads
-(company-domain news events, category-filtered).
+no page fetch. Smoke vendors: Exa instant, Parallel turbo, Firecrawl.
 
   PYTHONPATH=scripts .venv/bin/python -u scripts/websearch/run_atomic_news_probe.py
   PYTHONPATH=scripts .venv/bin/python -u scripts/websearch/run_atomic_news_probe.py --limit 8
@@ -31,26 +30,19 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from _shared import load_environment  # noqa: E402
-from websearch.predictleads_news import (  # noqa: E402
-    expand_categories,
-    fetch_category_events,
-    pick_categories,
-    recipe_categories,
-)
 
 SAMPLES = ROOT / "data" / "company-news" / "samples.json"
-VENDORS = ("exa", "parallel", "firecrawl", "predictleads")
+VENDORS = ("exa", "parallel", "firecrawl")
 DEFAULT_MODEL = "gpt-5.6-terra"
 MAX_RESULTS = 10
 SNIPPET_CHARS = 1200
 
-# Published list prices as of 2026-08-15. Firecrawl is 2 credits / 10 results;
+# Published list prices as of 2026-09-01. Firecrawl is 2 credits / 10 results;
 # USD uses a mid-plan $0.0025/credit so one 10-result search is $0.005.
 UNIT_COST_USD = {
     "exa": 0.007,
     "parallel": 0.001,
     "firecrawl": 0.005,
-    "predictleads": 0.04,
     "openai_input_per_m": 0.40,
     "openai_output_per_m": 1.60,
 }
@@ -74,19 +66,6 @@ def _post(url: str, headers: dict[str, str], body: dict[str, Any], timeout: int)
             continue
         raise RuntimeError(last_err)
     raise RuntimeError(last_err)
-
-
-def _get(url: str, headers: dict[str, str], params: dict[str, Any], timeout: int) -> tuple[Any, int]:
-    started = time.perf_counter()
-    response = requests.get(url, headers=headers, params=params, timeout=timeout)
-    elapsed_ms = round((time.perf_counter() - started) * 1000)
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = {"_raw": response.text[:500]}
-    if not response.ok:
-        raise RuntimeError(f"HTTP {response.status_code} {url}: {str(payload)[:400]}")
-    return payload, elapsed_ms
 
 
 def _host(url: str) -> str:
@@ -193,27 +172,10 @@ def search_parallel(question: str, _case: dict[str, Any]) -> tuple[list[dict[str
     return _dedupe(hits), elapsed_ms
 
 
-def search_predictleads(question: str, case: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
-    domain = case.get("company_domain") or (case.get("gold") or {}).get("domain")
-    if not domain:
-        raise RuntimeError("PredictLeads needs company_domain")
-    recipe = case.get("recipe") or case.get("pattern")
-    categories = expand_categories(recipe_categories(recipe), recipe)
-    try:
-        picked, _, _ = pick_categories(_openai(), "gpt-4.1-mini", question, recipe)
-        if picked:
-            categories = picked
-    except Exception:  # noqa: BLE001
-        pass
-    hits, raw = fetch_category_events(domain, categories)
-    return hits[:MAX_RESULTS], int(raw.get("latency_ms") or 0)
-
-
 SEARCHERS = {
     "exa": search_exa,
     "firecrawl": search_firecrawl,
     "parallel": search_parallel,
-    "predictleads": search_predictleads,
 }
 
 
