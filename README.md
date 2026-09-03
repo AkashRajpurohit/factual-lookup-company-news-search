@@ -57,13 +57,14 @@ These are the general web-search arms on the live factual-lookup board:
 | `exa_instant` | POST /search type=instant |
 | `tavily_basic` | POST /search search_depth=basic |
 | `tavily_advanced` | POST /search search_depth=advanced |
+| `datahyena` | GET /v1/companies/timeline |
 
 `--backend` / `--endpoints` default to this list. TinyFish Search is free
 with a 30 req/min cap.
 
 The live page also bands dedicated news indexes (Seltz news, Autobound,
-PredictLeads, Datahyena) on the same 300 questions. Those adapters are not
-in this runner; this repo covers the web-search band only.
+PredictLeads, Datahyena) on the same 300 questions. Of those, `datahyena` has
+an adapter here; the rest are not in this runner.
 
 ## Run
 
