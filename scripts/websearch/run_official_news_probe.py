@@ -46,7 +46,8 @@ OUT_ROOT = ROOT / "data" / "company-news" / "official-runs"
 DEFAULT_MODEL = "gpt-5.6-terra"
 
 # List prices as of 2026-09-01. Brave Search and Brave LLM Context are
-# $5 / 1,000 requests. Tavily ultra-fast is 1 credit at $0.008 PAYG.
+# $5 / 1,000 requests. Tavily Basic is 1 credit and Advanced is 2 credits
+# at $0.008 per credit PAYG.
 # RapidAPI google-search74 Pro overage is $0.003/request. TinyFish Search
 # is free with a 30 req/min cap.
 UNIT_COST_USD = {
@@ -62,7 +63,8 @@ UNIT_COST_USD = {
     "perplexity_low": 0.005,
     "tinyfish": 0.0,
     "firecrawl": 0.005,
-    "tavily_ultrafast": 0.008,
+    "tavily_basic": 0.008,
+    "tavily_advanced": 0.016,
     "serp": 0.003,
     "linkup_fast": 0.005,
     "linkup_standard": 0.005,
@@ -86,7 +88,8 @@ ENDPOINTS = (
     "you_highlights",
     "exa_fast",
     "exa_instant",
-    "tavily_ultrafast",
+    "tavily_basic",
+    "tavily_advanced",
 )
 
 ENDPOINT_MAP = {
@@ -105,7 +108,8 @@ ENDPOINT_MAP = {
     "you_highlights": "POST https://ydc-index.io/v1/search extraction_mode=highlights",
     "exa_fast": "POST https://api.exa.ai/search type=fast",
     "exa_instant": "POST https://api.exa.ai/search type=instant",
-    "tavily_ultrafast": "POST https://api.tavily.com/search search_depth=ultra-fast max_results=10",
+    "tavily_basic": "POST https://api.tavily.com/search search_depth=basic max_results=10",
+    "tavily_advanced": "POST https://api.tavily.com/search search_depth=advanced max_results=10",
 }
 
 ENDPOINT_ENV = {
@@ -124,7 +128,8 @@ ENDPOINT_ENV = {
     "you_highlights": ("YDC_API_KEY",),
     "exa_fast": ("EXA_API_KEY",),
     "exa_instant": ("EXA_API_KEY",),
-    "tavily_ultrafast": ("TAVILY_API_KEY",),
+    "tavily_basic": ("TAVILY_API_KEY",),
+    "tavily_advanced": ("TAVILY_API_KEY",),
 }
 
 
@@ -524,7 +529,7 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
         )
         hits = _parse_tinyfish(raw.get("response")) if raw["ok"] else []
         return hits, raw
-    if name == "tavily_ultrafast":
+    if name in {"tavily_basic", "tavily_advanced"}:
         raw = _http(
             method="POST",
             url="https://api.tavily.com/search",
@@ -534,7 +539,7 @@ def call_endpoint(name: str, question: str, case: dict[str, Any]) -> tuple[list[
             },
             body={
                 "query": question,
-                "search_depth": "ultra-fast",
+                "search_depth": "basic" if name == "tavily_basic" else "advanced",
                 "max_results": MAX_RESULTS,
             },
             params=None,
