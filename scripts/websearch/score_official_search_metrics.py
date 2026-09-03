@@ -34,7 +34,8 @@ ENDPOINTS = (
     "you_highlights",
     "exa_fast",
     "exa_instant",
-    "tavily_ultrafast",
+    "tavily_basic",
+    "tavily_advanced",
 )
 
 

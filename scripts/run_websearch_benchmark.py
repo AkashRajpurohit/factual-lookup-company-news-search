@@ -2,7 +2,7 @@
 """Run the public company-news web-search benchmark.
 
 One natural-language query per case, one API request, max 10 results. The
-default public sweep includes 14 endpoint configurations, including Parallel
+default public sweep includes 17 endpoint configurations, including Parallel
 Turbo and Parallel Fast as separately measured arms.
 Default extract model is gpt-5.6-terra. Re-score with the Opus judges after
 the vendor sweep:

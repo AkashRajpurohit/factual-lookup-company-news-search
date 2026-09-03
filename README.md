@@ -55,7 +55,8 @@ These are the general web-search arms on the live factual-lookup board:
 | `you_highlights` | POST /v1/search extraction_mode=highlights |
 | `exa_fast` | POST /search type=fast |
 | `exa_instant` | POST /search type=instant |
-| `tavily_ultrafast` | POST /search search_depth=ultra-fast |
+| `tavily_basic` | POST /search search_depth=basic |
+| `tavily_advanced` | POST /search search_depth=advanced |
 
 `--backend` / `--endpoints` default to this list. TinyFish Search is free
 with a 30 req/min cap.
