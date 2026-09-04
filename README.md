@@ -155,10 +155,6 @@ These are the general web-search arms on the live factual-lookup board:
 with a 30 req/min cap. The runner can carry arms that are not yet on the
 published board.
 
-The live page also bands dedicated news indexes (Seltz news, Autobound,
-PredictLeads, Datahyena) on the same 300 questions. Those adapters are not
-in this runner; this repo covers the web-search band only.
-
 ## Run
 
 ```bash
